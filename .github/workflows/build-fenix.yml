@@ -1,0 +1,104 @@
+name: build-fenix
+on: [workflow_dispatch]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+
+      - name: Checkout upstream STABLE (release)
+        uses: actions/checkout@v4
+        with:
+          repository: mozilla-firefox/firefox
+          ref: release
+          fetch-depth: 300
+          filter: 'blob:none'
+
+      # Recupere firelex-patch/ (overlay + patches + XPIs) depuis CE repo, dans un
+      # sous-dossier, sans re-cloner tout Firefox (sparse checkout, depth 1).
+      - name: Checkout firelex-patch overlay
+        uses: actions/checkout@v4
+        with:
+          path: _firelex
+          sparse-checkout: firelex-patch
+
+      - run: df -h
+
+      - name: Write mozconfig
+        run: |
+          cat > mozconfig <<'EOF'
+          ac_add_options --enable-project=mobile/android
+          ac_add_options --enable-artifact-builds
+          ac_add_options --target=aarch64
+          mk_add_options MOZ_OBJDIR=./objdir
+          EOF
+          cat mozconfig
+
+      # Applique l'overlay sur l'arbre upstream (= $GITHUB_WORKSPACE). Echoue
+      # bruyamment si un patch ne s'applique pas (signal de rebase).
+      - name: Apply firelex-patch
+        run: _firelex/firelex-patch/apply.sh "$GITHUB_WORKSPACE"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+
+      - name: Cache ~/.mozbuild (toolchains, SDK, NDK)
+        uses: actions/cache@v4
+        with:
+          path: ~/.mozbuild
+          key: mozbuild-android-artifact-${{ runner.os }}-v1
+          restore-keys: |
+            mozbuild-android-artifact-${{ runner.os }}-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-fenix-${{ runner.os }}-v1
+          restore-keys: |
+            gradle-fenix-${{ runner.os }}-
+
+
+      # ⚠️ "Artifact Mode" = télécharge Gecko précompilé (PAS de compilation C++).
+      # Sans "Artifact Mode", il compile tout le moteur -> impossible sur runner gratuit.
+      - name: mach bootstrap (ARTIFACT MODE)
+        run: python3 ./mach --no-interactive bootstrap --application-choice='GeckoView/Firefox for Android Artifact Mode'
+
+      - run: df -h
+
+      # Configure d'abord, puis on FORCE le download de l'artifact Gecko.
+      # Si ca echoue ici, c'est net et rapide (pas 29 min de compilation).
+      - name: mach configure
+        run: python3 ./mach configure
+
+      - name: Download prebuilt GeckoView (fail fast)
+        run: python3 ./mach artifact install
+
+      - name: mach build (artifact)
+        run: python3 ./mach build
+
+      - name: Assemble Fenix debug APK
+        run: python3 ./mach gradle fenix:assembleDebug -PbenchmarkTest
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fenix-debug-apk
+          path: objdir/gradle/build/mobile/android/fenix/app/outputs/apk/**/*.apk
+          if-no-files-found: warn

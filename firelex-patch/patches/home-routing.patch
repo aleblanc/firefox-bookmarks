@@ -1,0 +1,37 @@
+diff --git a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
+index 05a549aa5c7f..aa64b53b706f 100644
+--- a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
++++ b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/home/HomeFragment.kt
+@@ -1113,9 +1113,32 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
+         }
+     }
+ 
++    @Suppress("DEPRECATION")
+     override fun onResume() {
+         super.onResume()
+ 
++        org.mozilla.fenix.components.SymfonyBuiltInExtensions.dashboardUrl?.let { dashboard ->
++            if (browsingModeManager.mode.isPrivate) return@let
++            val homeActivity = requireActivity() as HomeActivity
++            val existing = requireComponents.core.store.state.tabs
++                .firstOrNull { it.content.url.startsWith(dashboard) }
++            if (existing != null) {
++                requireComponents.useCases.tabsUseCases.selectTab(existing.id)
++                homeActivity.openToBrowserAndLoad(
++                    searchTermOrURL = dashboard,
++                    newTab = false,
++                    from = BrowserDirection.FromHome,
++                )
++            } else {
++                homeActivity.openToBrowserAndLoad(
++                    searchTermOrURL = dashboard,
++                    newTab = true,
++                    from = BrowserDirection.FromHome,
++                )
++            }
++            return
++        }
++
+         hideToolbar()
+ 
+         val components = requireComponents
