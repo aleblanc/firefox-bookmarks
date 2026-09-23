@@ -52,6 +52,15 @@ jobs:
       - name: Apply firelex-patch
         run: _firelex/firelex-patch/apply.sh "$GITHUB_WORKSPACE"
 
+      # Stable debug keystore (default AGP debug creds) so every build is signed with
+      # the SAME key -> APKs install as updates across versions instead of requiring
+      # an uninstall. Fenix signs both debug and release build types with signingConfigs.debug,
+      # which reads ~/.android/debug.keystore.
+      - name: Use a stable debug keystore
+        run: |
+          mkdir -p ~/.android
+          cp _firelex/firelex-patch/debug.keystore ~/.android/debug.keystore
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
