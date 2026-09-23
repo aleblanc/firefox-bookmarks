@@ -5,6 +5,8 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: write
     steps:
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
@@ -102,3 +104,22 @@ jobs:
           name: fenix-debug-apk
           path: objdir/gradle/build/mobile/android/fenix/app/outputs/apk/**/*.apk
           if-no-files-found: warn
+
+      # Firefox and Fenix share the same version number (Fenix = Firefox for Android).
+      - name: Read Firefox version
+        id: ver
+        run: echo "version=$(cat browser/config/version.txt)" >> "$GITHUB_OUTPUT"
+
+      # Creates the release (or updates it if the tag already exists) and attaches the APK.
+      - name: Publish APK to a GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Firefox Bookmarks ${{ steps.ver.outputs.version }}
+          body: >-
+            Custom Firefox for Android (arm64) built from mozilla-firefox release
+            ${{ steps.ver.outputs.version }}, with the Symfony Bookmarks extension and
+            uBlock Origin pre-installed and the dashboard set as the home page.
+            Debug-signed APK for sideloading.
+          files: objdir/gradle/build/mobile/android/fenix/app/outputs/apk/**/*.apk
+          fail_on_unmatched_files: true
