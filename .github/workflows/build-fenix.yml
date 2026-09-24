@@ -43,6 +43,17 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: write
+    env:
+      # Where AGP looks for the debug keystore (highest-priority lookup, see
+      # com.android.prefs.AbstractAndroidLocations). Without it AGP 9.x prefers
+      # $XDG_CONFIG_HOME/.android when that folder exists, and GitHub runners set
+      # XDG_CONFIG_HOME=/home/runner/.config while `mach bootstrap` (sdkmanager) creates
+      # /home/runner/.config/.android -> our keystore in ~/.android was silently ignored
+      # and AGP generated a throwaway key on every run (non-updatable APKs).
+      ANDROID_USER_HOME: /home/runner/.android
+      # SHA-256 of the certificate inside firelex-patch/debug.keystore. The build fails if
+      # the produced APK is not signed with it.
+      FIRELEX_KEY_SHA256: 3dfc4d036f6b2f017244ca1598f0d7947259adf41f577d667db458a7d055764b
     steps:
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
@@ -88,14 +99,18 @@ jobs:
       - name: Apply firelex-patch
         run: _firelex/firelex-patch/apply.sh "$GITHUB_WORKSPACE"
 
-      # Stable debug keystore (default AGP debug creds) so every build is signed with
-      # the SAME key -> APKs install as updates across versions instead of requiring
-      # an uninstall. Fenix signs both debug and release build types with signingConfigs.debug,
-      # which reads ~/.android/debug.keystore.
+      # Stable debug keystore (default AGP debug creds: alias androiddebugkey / android)
+      # so every build is signed with the SAME key -> APKs install as updates across
+      # versions instead of requiring an uninstall. Fenix's debug build type uses AGP's
+      # implicit signingConfigs.debug, which reads $ANDROID_USER_HOME/debug.keystore.
       - name: Use a stable debug keystore
         run: |
-          mkdir -p ~/.android
-          cp _firelex/firelex-patch/debug.keystore ~/.android/debug.keystore
+          set -euo pipefail
+          mkdir -p "$ANDROID_USER_HOME"
+          cp _firelex/firelex-patch/debug.keystore "$ANDROID_USER_HOME/debug.keystore"
+          echo "=== keystore installed at $ANDROID_USER_HOME/debug.keystore ==="
+          ls -la "$ANDROID_USER_HOME"
+          keytool -list -v -keystore "$ANDROID_USER_HOME/debug.keystore" -storepass android | grep -E "Alias name|SHA256:"
 
       - uses: actions/setup-python@v5
         with:
@@ -139,8 +154,42 @@ jobs:
       - name: mach build (artifact)
         run: python3 ./mach build
 
+      # Debug dump: which ".android" folders exist right before Gradle signs the APK.
+      # If /home/runner/.config/.android shows up here, that is the folder AGP would
+      # have picked without ANDROID_USER_HOME.
+      - name: Dump signing environment (debug)
+        run: |
+          echo "=== env ==="
+          env | grep -E '^(HOME|XDG_|ANDROID_|TEST_TMPDIR|JAVA_HOME)' | sort || true
+          echo "=== version files ==="
+          echo "browser/config/version.txt : $(cat browser/config/version.txt)"
+          echo "mobile/android/version.txt : $(cat mobile/android/version.txt)"
+          for d in "$ANDROID_USER_HOME" "$HOME/.android" "${XDG_CONFIG_HOME:-$HOME/.config}/.android"; do
+            echo "=== $d ==="
+            ls -la "$d" 2>/dev/null || echo "(absent)"
+          done
+
       - name: Assemble Fenix debug APK
-        run: python3 ./mach gradle fenix:assembleDebug -PbenchmarkTest
+        run: python3 ./mach gradle fenix:assembleDebug -PbenchmarkTest -PdisableLeakCanary
+
+      # Fail loudly if the APK is not signed with the committed keystore, and print the
+      # versionCode/versionName actually baked into the manifest.
+      - name: Verify APK signature and version
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BT"
+          for apk in objdir/gradle/build/mobile/android/fenix/app/outputs/apk/*/*.apk; do
+            echo "=== $apk ==="
+            "$BT/aapt2" dump badging "$apk" | grep -E "^package:" || true
+            "$BT/apksigner" verify --print-certs "$apk" | tee /tmp/certs.txt
+            if ! grep -qi "certificate SHA-256 digest: $FIRELEX_KEY_SHA256" /tmp/certs.txt; then
+              echo "::error::APK is NOT signed with firelex-patch/debug.keystore (expected SHA-256 $FIRELEX_KEY_SHA256)"
+              echo "=== $ANDROID_USER_HOME ==="; ls -la "$ANDROID_USER_HOME" || true
+              echo "=== ${XDG_CONFIG_HOME:-$HOME/.config}/.android ==="; ls -la "${XDG_CONFIG_HOME:-$HOME/.config}/.android" || true
+              exit 1
+            fi
+          done
 
       - name: Upload APK
         if: always()
