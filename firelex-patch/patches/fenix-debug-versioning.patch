@@ -1,0 +1,25 @@
+--- a/mobile/android/fenix/app/build.gradle
++++ b/mobile/android/fenix/app/build.gradle
+@@ -305,6 +305,22 @@
+             variant.outputs.each { output ->
+                 output.versionName.set(versionName)
+             }
++        } else if (buildType == 'debug') {
++            // firelex-patch: sideloaded debug APKs are installed as updates over the previous
++            // Firefox version, so they need a monotonically increasing versionCode and a
++            // meaningful versionName. Upstream leaves debug at versionCode 1 / "1.0.yyww".
++            // Derive both from mobile/android/version.txt, e.g. "157.0.2":
++            //   versionCode = 157 * 1_000_000 + 0 * 1_000 + 2 = 157000002
++            def firelexVersion = Config.readVersionFromFile(project).trim()
++            def firelexParts = firelexVersion.replaceFirst(/[ab]\d+$/, "").tokenize(".") + ["0", "0", "0"]
++            def firelexVersionCode = firelexParts[0].toInteger() * 1000000 +
++                    firelexParts[1].toInteger() * 1000 +
++                    firelexParts[2].toInteger()
++            println("[firelex-patch] debug versionName=$firelexVersion versionCode=$firelexVersionCode")
++            variant.outputs.each { output ->
++                output.versionName.set(firelexVersion)
++                output.versionCode.set(firelexVersionCode)
++            }
+         }
+     }
+ }
