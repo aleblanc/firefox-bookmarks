@@ -170,7 +170,7 @@ jobs:
           done
 
       - name: Assemble Fenix debug APK
-        run: python3 ./mach gradle fenix:assembleDebug -PbenchmarkTest
+        run: python3 ./mach gradle fenix:assembleDebug -PbenchmarkTest -PdisableLeakCanary
 
       # Fail loudly if the APK is not signed with the committed keystore, and print the
       # versionCode/versionName actually baked into the manifest.

@@ -1,0 +1,15 @@
+--- a/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
++++ b/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/FenixApplication.kt
+@@ -372,7 +372,11 @@
+         val megazordDeferred = setupMegazordNetwork()
+ 
+         setDayNightTheme()
+-        components.strictMode.enableStrictMode(true)
++        // firelex-patch: this debug build is used as a daily browser, not for development.
++        // Upstream enables StrictMode with penaltyDeath in the debug channel, which kills the
++        // process on any main-thread disk/network violation (including OEM framework code).
++        // Keep the detection + logcat logging, drop the crash.
++        components.strictMode.enableStrictMode(false)
+ 
+         initializeWebExtensionSupport()
+ 

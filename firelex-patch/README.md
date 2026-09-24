@@ -22,6 +22,7 @@ patches/                   # patches appliques sur des fichiers upstream
   Core.kt.patch            # appelle l'installer built-in
   home-routing.patch       # route la home vers le dashboard
   fenix-debug-versioning.patch  # versionCode/versionName du build debug derives de version.txt
+  strictmode-no-penalty-death.patch  # StrictMode: garde les logs, retire le penaltyDeath (crash) du debug
 debug.keystore             # cle de signature stable (alias androiddebugkey / android), voir CI
 apply.sh                   # orchestre l'injection (lance en CI avant `mach build`)
 ```
@@ -52,3 +53,8 @@ le signal qu'un patch doit etre rebase apres un sync upstream.
   l'empreinte SHA-256 du certificat de l'APK apres le build et echoue si elle differe.
   `fenix-debug-versioning.patch` donne au build debug un `versionCode` croissant
   (`157.0.2` -> `157000002`) et `versionName = 157.0.2`, sinon upstream laisse `1`.
+- **Stabilite du build debug** : le build type debug de Fenix embarque des outils de dev qui
+  peuvent tuer l'app en usage quotidien. La CI passe `-PdisableLeakCanary` (pas de heap dump ;
+  le toggle "LeakCanary" reste dans Parametres > Avance si besoin) et
+  `strictmode-no-penalty-death.patch` remplace `enableStrictMode(true)` par `false` : les
+  violations StrictMode sont toujours loggees dans logcat mais ne crashent plus le process.
