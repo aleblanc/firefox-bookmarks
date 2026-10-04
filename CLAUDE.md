@@ -156,10 +156,15 @@ creds are public/universal). No Gradle change needed.
   variant for resources.
 - **`-Werror`**: any deprecation/warning in patched Kotlin fails compilation. Use
   `@Suppress("DEPRECATION")` etc. as needed.
-- **`getBrowserInfo().version`** (used by the extension's update banner) returns the actual
-  prebuilt GeckoView version, which can **lag `version.txt`** (the Release tag) by a patch when
-  the exact artifact isn't available yet → the update banner can false-positive once (throttled,
-  self-heals). Known minor issue; not fixed.
+- **Update banner version source.** `getBrowserInfo().version` returns the actual prebuilt
+  GeckoView version, which **lags `version.txt`** (the Release tag) by a patch in artifact mode.
+  Comparing it against the release tag made the banner **false-positive daily** (installed looks
+  older than the tag forever) and **miss real updates**. Fixed: `apply.sh` now stamps the exact
+  `browser/config/version.txt` (same string the release is tagged with) into the extension as
+  `build-version.txt`, and the dashboard (`checkForUpdate` in `symfony-bookmarks`) reads that
+  instead — both sides of the comparison come from the same source. `getBrowserInfo()` is only a
+  fallback when the stamp is absent (extension on a stock Firefox). Rebuilding the XPI is required
+  for the dashboard side to ship (see "Update the Symfony extension" above).
 - Authoring patches: you can't `git apply --check` locally (no Firefox tree). **Prefer overlay
   files over patches**; when a patch is unavoidable, author it against the exact `release` file
   fetched via raw, with correct context. Generate patches by editing a real file then

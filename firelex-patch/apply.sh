@@ -28,6 +28,20 @@ for xpi in "${!EXT_MAP[@]}"; do
   test -f "$dest/manifest.json" || { echo "ERROR: manifest.json missing in $dest"; exit 1; }
 done
 
+# Stamp the real build version into the Symfony Bookmarks extension so its update banner
+# can compare the *installed APK version* (not getBrowserInfo()'s GeckoView version, which
+# lags version.txt in artifact mode and makes the banner false-positive/false-negative).
+# This is the exact string the release is tagged with (browser/config/version.txt -> v<ver>
+# in build-fenix.yml), so both sides of the comparison come from the same source.
+SFB_DEST="$ASSETS_DIR/symfony-bookmarks"
+VERSION_FILE="$TARGET_ROOT/browser/config/version.txt"
+if [ -f "$VERSION_FILE" ]; then
+  tr -d '[:space:]' < "$VERSION_FILE" > "$SFB_DEST/build-version.txt"
+  echo "[firelex-patch] Stamped build-version.txt = $(cat "$SFB_DEST/build-version.txt")"
+else
+  echo "[firelex-patch] WARNING: $VERSION_FILE not found; extension update banner will fall back to getBrowserInfo()"
+fi
+
 echo "[firelex-patch] Applying source patches..."
 shopt -s nullglob
 for patch in "$PATCH_DIR"/patches/*.patch; do
